@@ -848,6 +848,7 @@ dependencies = [
  "png",
  "profiling",
  "regex",
+ "reis",
  "ron",
  "rust-embed",
  "rustix",
@@ -4267,6 +4268,15 @@ name = "regex-syntax"
 version = "0.8.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7a66a03ae7c801facd77a29370b4faec201768915ac14a721ba36f20bc9c209b"
+
+[[package]]
+name = "reis"
+version = "0.2.0"
+source = "git+https://github.com/ids1024/reis#feeeca39c58c8615920042d0aaef7ae1d1d7d762"
+dependencies = [
+ "calloop 0.14.0",
+ "rustix",
+]
 
 [[package]]
 name = "renderdoc-sys"

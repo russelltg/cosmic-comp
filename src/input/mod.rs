@@ -241,6 +241,8 @@ impl State {
                                 serial,
                                 time,
                                 |data, modifiers, handle| {
+                                    data.common.atspi_ei.input(modifiers, &handle, state, time as u64 * 1000);
+
                                     // Leave move overview mode, if any modifier was released
                                     if let Some(Trigger::KeyboardMove(action_modifiers)) =
                                         shell.overview_mode().0.active_trigger()
