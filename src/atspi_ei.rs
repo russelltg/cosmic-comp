@@ -140,6 +140,8 @@ pub fn listen_eis(handle: &calloop::LoopHandle<'static, State>) {
                                         );
                                     },
                                 );
+                                device.device().resumed(EI_SERIAL_COUNTER.next_serial().into());
+                                device.device().start_emulating(EI_SERIAL_COUNTER.next_serial().into(), 0);
                                 let keyboard = device.interface::<eis::Keyboard>().unwrap();
 
                                 state.common.atspi_ei.keyboards.push((
