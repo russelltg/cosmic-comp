@@ -141,7 +141,6 @@ pub fn listen_eis(handle: &calloop::LoopHandle<'static, State>) {
                                     },
                                 );
                                 device.device().resumed(EI_SERIAL_COUNTER.next_serial().into());
-                                device.device().start_emulating(EI_SERIAL_COUNTER.next_serial().into(), 0);
 
                                 let keyboard = device.interface::<eis::Keyboard>().unwrap();
 
@@ -152,6 +151,8 @@ pub fn listen_eis(handle: &calloop::LoopHandle<'static, State>) {
                                     state.common.atspi_ei.modifiers.serialized.latched,
                                     state.common.atspi_ei.modifiers.serialized.layout_effective,
                                 );
+
+                                device.device().start_emulating(EI_SERIAL_COUNTER.next_serial().into(), 0);
 
                                 state.common.atspi_ei.keyboards.push((
                                     connected_state.context.clone(),
