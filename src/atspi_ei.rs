@@ -51,7 +51,7 @@ impl AtspiEiState {
             }
         }
         for (context, device, keyboard) in &self.keyboards {
-            keyboard.key(keysym.raw_code().raw(), state);
+            keyboard.key(keysym.raw_code().raw() - 8, state);
             device.frame(EI_SERIAL_COUNTER.next_serial().into(), time);
             context.flush();
         }
