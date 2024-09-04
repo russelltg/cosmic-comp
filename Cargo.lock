@@ -914,7 +914,7 @@ dependencies = [
 [[package]]
 name = "cosmic-protocols"
 version = "0.1.0"
-source = "git+https://github.com/pop-os/cosmic-protocols?branch=main#de2fead49d6af3a221db153642e4d7c2235aafc4"
+source = "git+https://github.com/pop-os/cosmic-protocols?branch=atspi-ei#3b377a7dc01355ca88c6e957ef61c2caad8ea3ea"
 dependencies = [
  "bitflags 2.6.0",
  "wayland-backend",
@@ -2837,7 +2837,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4979f22fdb869068da03c9f7528f8297c6fd2606bc3a4affe42e6a823fdb8da4"
 dependencies = [
  "cfg-if",
- "windows-targets 0.52.6",
+ "windows-targets 0.48.5",
 ]
 
 [[package]]
@@ -4272,7 +4272,7 @@ checksum = "7a66a03ae7c801facd77a29370b4faec201768915ac14a721ba36f20bc9c209b"
 [[package]]
 name = "reis"
 version = "0.2.0"
-source = "git+https://github.com/ids1024/reis#feeeca39c58c8615920042d0aaef7ae1d1d7d762"
+source = "git+https://github.com/ids1024/reis#ed238dd08aaaebb4afb456c97e5651707202d540"
 dependencies = [
  "calloop 0.14.0",
  "rustix",

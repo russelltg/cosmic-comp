@@ -15,7 +15,6 @@ use tracing::{error, info, warn};
 
 use crate::wayland::handlers::compositor::client_compositor_state;
 
-mod atspi_ei;
 pub mod backend;
 pub mod config;
 pub mod dbus;
