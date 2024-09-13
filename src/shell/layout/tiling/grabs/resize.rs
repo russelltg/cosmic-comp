@@ -94,6 +94,7 @@ impl PointerTarget<State> for ResizeForkTarget {
                         location.as_global(),
                         node,
                         left_up_idx,
+                        None,
                         orientation,
                         output,
                         ReleaseMode::NoMouseButtons,
@@ -148,6 +149,7 @@ impl TouchTarget<State> for ResizeForkTarget {
                     location.as_global(),
                     node,
                     left_up_idx,
+                    None, // only resizing in one dimension when dragging resize targets
                     orientation,
                     output,
                     ReleaseMode::NoMouseButtons,
@@ -184,9 +186,11 @@ pub struct ResizeForkGrab {
     last_loc: Point<f64, Global>,
     old_tree: Option<Tree<Data>>,
     accumulated_delta: f64,
+    accumulated_delta_parent: f64,
     node: NodeId,
     output: WeakOutput,
     left_up_idx: usize,
+    parent_left_up_idx: Option<usize>,
     orientation: Orientation,
     release: ReleaseMode,
 }
@@ -196,7 +200,8 @@ impl ResizeForkGrab {
         start_data: GrabStartData,
         pointer_loc: Point<f64, Global>,
         node: NodeId,
-        idx: usize,
+        left_up_idx: usize,
+        parent_left_up_idx: Option<usize>,
         orientation: Orientation,
         output: WeakOutput,
         release: ReleaseMode,
@@ -206,9 +211,11 @@ impl ResizeForkGrab {
             last_loc: pointer_loc,
             old_tree: None,
             accumulated_delta: 0.0,
+            accumulated_delta_parent: 0.0,
             node,
             output,
-            left_up_idx: idx,
+            left_up_idx,
+            parent_left_up_idx,
             orientation,
             release,
         }
@@ -254,6 +261,7 @@ impl ResizeForkGrab {
                     if !equal {
                         *old_tree = tree.copy_clone();
                         self.accumulated_delta = 0.0;
+                        self.accumulated_delta_parent = 0.0;
                     } else {
                         *tree = old_tree.copy_clone();
                     }
@@ -263,12 +271,16 @@ impl ResizeForkGrab {
                 }
             };
             if tree.get(&self.node).is_ok() {
-                let delta = match self.orientation {
-                    Orientation::Vertical => delta.x,
-                    Orientation::Horizontal => delta.y,
+                match self.orientation {
+                    Orientation::Horizontal => {
+                        self.accumulated_delta += delta.y.round();
+                        self.accumulated_delta_parent += delta.x.round();
+                    }
+                    Orientation::Vertical => {
+                        self.accumulated_delta += delta.x.round();
+                        self.accumulated_delta_parent += delta.y.round();
+                    }
                 }
-                .round();
-                self.accumulated_delta += delta;
 
                 // check that we are still alive
                 let mut iter = tree
@@ -281,39 +293,42 @@ impl ResizeForkGrab {
                     return true;
                 };
 
-                match tree.get_mut(&self.node).unwrap().data_mut() {
+                let node = tree.get_mut(&self.node).unwrap();
+                let parent = node.parent().cloned();
+
+                let child_orientation = match node.data_mut() {
                     Data::Group {
                         sizes, orientation, ..
                     } => {
-                        if sizes[self.left_up_idx] + sizes[self.left_up_idx + 1]
-                            < match orientation {
-                                Orientation::Vertical => 720,
-                                Orientation::Horizontal => 480,
-                            }
-                        {
+                        if !perform_fork_grab_resize(
+                            &mut sizes[..],
+                            self.left_up_idx,
+                            *orientation,
+                            self.accumulated_delta,
+                        ) {
                             return false;
-                        };
+                        }
 
-                        let old_size = sizes[self.left_up_idx];
-                        sizes[self.left_up_idx] = (old_size
-                            + self.accumulated_delta.round() as i32)
-                            .max(if self.orientation == Orientation::Vertical {
-                                360
-                            } else {
-                                240
-                            });
-                        let diff = old_size - sizes[self.left_up_idx];
-                        let next_size = sizes[self.left_up_idx + 1] + diff;
-                        sizes[self.left_up_idx + 1] =
-                            next_size.max(if self.orientation == Orientation::Vertical {
-                                360
-                            } else {
-                                240
-                            });
-                        let next_diff = next_size - sizes[self.left_up_idx + 1];
-                        sizes[self.left_up_idx] += next_diff;
+                        *orientation
                     }
                     _ => unreachable!(),
+                };
+
+                if let Some(parent_left_up_idx) = self.parent_left_up_idx {
+                    if let Some(Data::Group {
+                        orientation, sizes, ..
+                    }) = parent.map(|p| tree.get_mut(&p).unwrap().data_mut())
+                    {
+                        if *orientation == child_orientation {
+                            return false; // definitely want it to be the other direction, strange situation if not...
+                        }
+                        perform_fork_grab_resize(
+                            &mut sizes[..],
+                            parent_left_up_idx,
+                            *orientation,
+                            self.accumulated_delta_parent,
+                        );
+                    }
                 }
 
                 self.last_loc = location.as_global();
@@ -556,4 +571,39 @@ impl TouchGrab<State> for ResizeForkGrab {
     }
 
     fn unset(&mut self, _data: &mut State) {}
+}
+
+fn perform_fork_grab_resize(
+    sizes: &mut [i32],
+    left_up_idx: usize,
+    orientation: Orientation,
+    delta: f64,
+) -> bool {
+    if sizes[left_up_idx] + sizes[left_up_idx + 1]
+        < match orientation {
+            Orientation::Vertical => 720,
+            Orientation::Horizontal => 480,
+        }
+    {
+        return false;
+    };
+
+    let old_size = sizes[left_up_idx];
+    sizes[left_up_idx] =
+        (old_size + delta.round() as i32).max(if orientation == Orientation::Vertical {
+            360
+        } else {
+            240
+        });
+    let diff = old_size - sizes[left_up_idx];
+    let next_size = sizes[left_up_idx + 1] + diff;
+    sizes[left_up_idx + 1] = next_size.max(if orientation == Orientation::Vertical {
+        360
+    } else {
+        240
+    });
+    let next_diff = next_size - sizes[left_up_idx + 1];
+    sizes[left_up_idx] += next_diff;
+
+    true
 }

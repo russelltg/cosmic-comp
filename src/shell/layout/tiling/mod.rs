@@ -2467,7 +2467,7 @@ impl TilingLayout {
         &self,
         mut node_id: NodeId,
         edge: ResizeEdge,
-    ) -> Option<(NodeId, usize, Orientation)> {
+    ) -> Option<(NodeId, usize, Option<usize>, Orientation)> {
         let tree = self.tree();
 
         while let Some(group_id) = tree.get(&node_id).unwrap().parent().cloned() {
@@ -2478,20 +2478,30 @@ impl TilingLayout {
                 .position(|id| id == &node_id)
                 .unwrap();
             let total = tree.children_ids(&group_id).unwrap().count();
-            if orientation == Orientation::Vertical {
-                if node_idx > 0 && edge.contains(ResizeEdge::LEFT) {
-                    return Some((group_id, node_idx - 1, orientation));
-                }
-                if node_idx < total - 1 && edge.contains(ResizeEdge::RIGHT) {
-                    return Some((group_id, node_idx, orientation));
-                }
-            } else {
-                if node_idx > 0 && edge.contains(ResizeEdge::TOP) {
-                    return Some((group_id, node_idx - 1, orientation));
-                }
-                if node_idx < total - 1 && edge.contains(ResizeEdge::BOTTOM) {
-                    return Some((group_id, node_idx, orientation));
-                }
+            if let Some(left_up_idx) =
+                resize_edge_to_left_up_idx(orientation, node_idx, total, edge)
+            {
+                let parent_left_up_idx =
+                    if let Some(group_parent) = tree.get(&group_id).unwrap().parent() {
+                        let group_idx = tree
+                            .children_ids(&group_parent)
+                            .unwrap()
+                            .position(|id| id == &group_id)
+                            .unwrap();
+                        let group_parent_orientation =
+                            tree.get(&group_parent).unwrap().data().orientation();
+                        let group_parent_total = tree.children_ids(&group_parent).unwrap().count();
+                        resize_edge_to_left_up_idx(
+                            group_parent_orientation,
+                            group_idx,
+                            group_parent_total,
+                            edge,
+                        )
+                    } else {
+                        None
+                    };
+
+                return Some((group_id, left_up_idx, parent_left_up_idx, orientation));
             }
 
             node_id = group_id;
@@ -5412,4 +5422,29 @@ fn scale_to_center<C>(
                 .into(),
         )
     }
+}
+
+fn resize_edge_to_left_up_idx(
+    orientation: Orientation,
+    node_idx: usize,
+    total: usize,
+    edge: ResizeEdge,
+) -> Option<usize> {
+    if orientation == Orientation::Vertical {
+        if node_idx > 0 && edge.contains(ResizeEdge::LEFT) {
+            return Some(node_idx - 1);
+        }
+        if node_idx < total - 1 && edge.contains(ResizeEdge::RIGHT) {
+            return Some(node_idx);
+        }
+    } else {
+        if node_idx > 0 && edge.contains(ResizeEdge::TOP) {
+            return Some(node_idx - 1);
+        }
+        if node_idx < total - 1 && edge.contains(ResizeEdge::BOTTOM) {
+            return Some(node_idx);
+        }
+    }
+
+    None
 }

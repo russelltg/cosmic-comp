@@ -3262,12 +3262,14 @@ impl Shell {
             grab.into()
         } else if let Some(ws) = self.space_for_mut(&mapped) {
             let node_id = mapped.tiling_node_id.lock().unwrap().clone()?;
-            let (node, left_up_idx, orientation) = ws.tiling_layer.resize_request(node_id, edge)?;
+            let (node, left_up_idx, parent_left_up_idx, orientation) =
+                ws.tiling_layer.resize_request(node_id, edge)?;
             ResizeForkGrab::new(
                 start_data,
                 new_loc.to_f64(),
                 node,
                 left_up_idx,
+                parent_left_up_idx,
                 orientation,
                 ws.output.downgrade(),
                 ReleaseMode::Click,
@@ -3464,13 +3466,14 @@ impl Shell {
             grab.into()
         } else if let Some(ws) = self.space_for_mut(&mapped) {
             let node_id = mapped.tiling_node_id.lock().unwrap().clone()?;
-            let (node, left_up_idx, orientation) =
+            let (node, left_up_idx, parent_left_up_idx, orientation) =
                 ws.tiling_layer.resize_request(node_id, edges)?;
             ResizeForkGrab::new(
                 start_data,
                 seat.get_pointer().unwrap().current_location().as_global(),
                 node,
                 left_up_idx,
+                parent_left_up_idx,
                 orientation,
                 ws.output.downgrade(),
                 ReleaseMode::NoMouseButtons,
