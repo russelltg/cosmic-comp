@@ -83,6 +83,10 @@ impl PointerTarget<State> for ResizeForkTarget {
             data.common.event_loop_handle.insert_idle(move |state| {
                 let pointer = seat.get_pointer().unwrap();
                 let location = pointer.current_location();
+                let (left_node_idx, right_node_idx) = match orientation {
+                    Orientation::Horizontal => (Some((node, left_up_idx)), None),
+                    Orientation::Vertical => (None, Some((node, left_up_idx))),
+                };
                 pointer.set_grab(
                     state,
                     ResizeForkGrab::new(
@@ -92,10 +96,8 @@ impl PointerTarget<State> for ResizeForkTarget {
                             location,
                         }),
                         location.as_global(),
-                        node,
-                        left_up_idx,
-                        None,
-                        orientation,
+                        left_node_idx,
+                        right_node_idx,
                         output,
                         ReleaseMode::NoMouseButtons,
                     ),
@@ -138,6 +140,10 @@ impl TouchTarget<State> for ResizeForkTarget {
         let location = event.location;
         data.common.event_loop_handle.insert_idle(move |state| {
             let touch = seat.get_touch().unwrap();
+            let (left_node_idx, right_node_idx) = match orientation {
+                Orientation::Horizontal => (Some((node, left_up_idx)), None),
+                Orientation::Vertical => (None, Some((node, left_up_idx))),
+            };
             touch.set_grab(
                 state,
                 ResizeForkGrab::new(
@@ -147,10 +153,8 @@ impl TouchTarget<State> for ResizeForkTarget {
                         location,
                     }),
                     location.as_global(),
-                    node,
-                    left_up_idx,
-                    None, // only resizing in one dimension when dragging resize targets
-                    orientation,
+                    left_node_idx,
+                    right_node_idx,
                     output,
                     ReleaseMode::NoMouseButtons,
                 ),
@@ -185,13 +189,11 @@ pub struct ResizeForkGrab {
     start_data: GrabStartData,
     last_loc: Point<f64, Global>,
     old_tree: Option<Tree<Data>>,
-    accumulated_delta: f64,
-    accumulated_delta_parent: f64,
-    node: NodeId,
+    accumulated_delta_left: f64,
+    accumulated_delta_up: f64,
+    left_node_idx: Option<(NodeId, usize)>,
+    up_node_idx: Option<(NodeId, usize)>,
     output: WeakOutput,
-    left_up_idx: usize,
-    parent_left_up_idx: Option<usize>,
-    orientation: Orientation,
     release: ReleaseMode,
 }
 
@@ -199,10 +201,8 @@ impl ResizeForkGrab {
     pub fn new(
         start_data: GrabStartData,
         pointer_loc: Point<f64, Global>,
-        node: NodeId,
-        left_up_idx: usize,
-        parent_left_up_idx: Option<usize>,
-        orientation: Orientation,
+        left_node_idx: Option<(NodeId, usize)>,
+        up_node_idx: Option<(NodeId, usize)>,
         output: WeakOutput,
         release: ReleaseMode,
     ) -> ResizeForkGrab {
@@ -210,14 +210,12 @@ impl ResizeForkGrab {
             start_data,
             last_loc: pointer_loc,
             old_tree: None,
-            accumulated_delta: 0.0,
-            accumulated_delta_parent: 0.0,
-            node,
-            output,
-            left_up_idx,
-            parent_left_up_idx,
-            orientation,
+            accumulated_delta_left: 0.0,
+            accumulated_delta_up: 0.0,
+            left_node_idx,
+            up_node_idx,
             release,
+            output,
         }
     }
 }
@@ -260,8 +258,8 @@ impl ResizeForkGrab {
 
                     if !equal {
                         *old_tree = tree.copy_clone();
-                        self.accumulated_delta = 0.0;
-                        self.accumulated_delta_parent = 0.0;
+                        self.accumulated_delta_left = 0.0;
+                        self.accumulated_delta_up = 0.0;
                     } else {
                         *tree = old_tree.copy_clone();
                     }
@@ -270,73 +268,22 @@ impl ResizeForkGrab {
                     *x = Some(tree.copy_clone());
                 }
             };
-            if tree.get(&self.node).is_ok() {
-                match self.orientation {
-                    Orientation::Horizontal => {
-                        self.accumulated_delta += delta.y.round();
-                        self.accumulated_delta_parent += delta.x.round();
-                    }
-                    Orientation::Vertical => {
-                        self.accumulated_delta += delta.x.round();
-                        self.accumulated_delta_parent += delta.y.round();
-                    }
-                }
 
-                // check that we are still alive
-                let mut iter = tree
-                    .children_ids(&self.node)
-                    .unwrap()
-                    .skip(self.left_up_idx);
-                let first_elem = iter.next();
-                let second_elem = iter.next();
-                if first_elem.is_none() || second_elem.is_none() {
-                    return true;
-                };
+            self.accumulated_delta_left += delta.x.round();
+            self.accumulated_delta_up += delta.y.round();
 
-                let node = tree.get_mut(&self.node).unwrap();
-                let parent = node.parent().cloned();
-
-                let child_orientation = match node.data_mut() {
-                    Data::Group {
-                        sizes, orientation, ..
-                    } => {
-                        if !perform_fork_grab_resize(
-                            &mut sizes[..],
-                            self.left_up_idx,
-                            *orientation,
-                            self.accumulated_delta,
-                        ) {
-                            return false;
-                        }
-
-                        *orientation
-                    }
-                    _ => unreachable!(),
-                };
-
-                if let Some(parent_left_up_idx) = self.parent_left_up_idx {
-                    if let Some(Data::Group {
-                        orientation, sizes, ..
-                    }) = parent.map(|p| tree.get_mut(&p).unwrap().data_mut())
-                    {
-                        if *orientation == child_orientation {
-                            return false; // definitely want it to be the other direction, strange situation if not...
-                        }
-                        perform_fork_grab_resize(
-                            &mut sizes[..],
-                            parent_left_up_idx,
-                            *orientation,
-                            self.accumulated_delta_parent,
-                        );
-                    }
-                }
-
-                self.last_loc = location.as_global();
-                let blocker = TilingLayout::update_positions(&output, tree, gaps);
-                tiling_layer.pending_blockers.extend(blocker);
-            } else {
-                return true;
+            if let Some((left_node, left_idx)) = &self.left_node_idx {
+                perform_fork_grab_resize(tree, left_node, *left_idx, self.accumulated_delta_left);
             }
+            if let Some((up_node, up_idx)) = &self.up_node_idx {
+                perform_fork_grab_resize(tree, up_node, *up_idx, self.accumulated_delta_up);
+            }
+
+            self.last_loc = location.as_global();
+            let blocker = TilingLayout::update_positions(&output, tree, gaps);
+            tiling_layer.pending_blockers.extend(blocker);
+        } else {
+            return true;
         }
         false
     }
@@ -574,36 +521,56 @@ impl TouchGrab<State> for ResizeForkGrab {
 }
 
 fn perform_fork_grab_resize(
-    sizes: &mut [i32],
+    tree:  &mut Tree<Data>,
+    node: &NodeId,
     left_up_idx: usize,
-    orientation: Orientation,
     delta: f64,
 ) -> bool {
-    if sizes[left_up_idx] + sizes[left_up_idx + 1]
-        < match orientation {
-            Orientation::Vertical => 720,
-            Orientation::Horizontal => 480,
-        }
-    {
-        return false;
-    };
+    if tree.get(&node).is_ok() {
+        // check that we are still alive
+        let mut iter = tree.children_ids(node).unwrap().skip(left_up_idx);
+        let first_elem = iter.next();
+        let second_elem = iter.next();
+        if first_elem.is_none() || second_elem.is_none() {
+            return true;
+        };
 
-    let old_size = sizes[left_up_idx];
-    sizes[left_up_idx] =
-        (old_size + delta.round() as i32).max(if orientation == Orientation::Vertical {
-            360
-        } else {
-            240
-        });
-    let diff = old_size - sizes[left_up_idx];
-    let next_size = sizes[left_up_idx + 1] + diff;
-    sizes[left_up_idx + 1] = next_size.max(if orientation == Orientation::Vertical {
-        360
-    } else {
-        240
-    });
-    let next_diff = next_size - sizes[left_up_idx + 1];
-    sizes[left_up_idx] += next_diff;
+        let node = tree.get_mut(node).unwrap();
 
-    true
+        match node.data_mut() {
+            Data::Group {
+                sizes, orientation, ..
+            } => {
+                if sizes[left_up_idx] + sizes[left_up_idx + 1]
+                    < match orientation {
+                        Orientation::Vertical => 720,
+                        Orientation::Horizontal => 480,
+                    }
+                {
+                    return false;
+                };
+
+                let old_size = sizes[left_up_idx];
+                sizes[left_up_idx] = (old_size + delta.round() as i32).max(
+                    if *orientation == Orientation::Vertical {
+                        360
+                    } else {
+                        240
+                    },
+                );
+                let diff = old_size - sizes[left_up_idx];
+                let next_size = sizes[left_up_idx + 1] + diff;
+                sizes[left_up_idx + 1] = next_size.max(if *orientation == Orientation::Vertical {
+                    360
+                } else {
+                    240
+                });
+                let next_diff = next_size - sizes[left_up_idx + 1];
+                sizes[left_up_idx] += next_diff;
+            }
+            _ => unreachable!(),
+        };
+    }
+
+    return true;
 }
