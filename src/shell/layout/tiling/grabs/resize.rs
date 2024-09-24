@@ -5,7 +5,7 @@ use crate::{
     shell::{
         focus::target::PointerFocusTarget,
         grabs::{GrabStartData, ReleaseMode},
-        layout::Orientation,
+        layout::{tiling::ResizeTarget, Orientation},
     },
     utils::prelude::*,
 };
@@ -83,9 +83,10 @@ impl PointerTarget<State> for ResizeForkTarget {
             data.common.event_loop_handle.insert_idle(move |state| {
                 let pointer = seat.get_pointer().unwrap();
                 let location = pointer.current_location();
-                let (left_node_idx, right_node_idx) = match orientation {
-                    Orientation::Horizontal => (Some((node, left_up_idx)), None),
-                    Orientation::Vertical => (None, Some((node, left_up_idx))),
+                let request = match orientation {
+                    // NOTE: vertical split means we are resizing horizontially
+                    Orientation::Horizontal => ResizeTarget::new_vertical(node, left_up_idx),
+                    Orientation::Vertical => ResizeTarget::new_horizonital(node, left_up_idx),
                 };
                 pointer.set_grab(
                     state,
@@ -96,8 +97,7 @@ impl PointerTarget<State> for ResizeForkTarget {
                             location,
                         }),
                         location.as_global(),
-                        left_node_idx,
-                        right_node_idx,
+                        request,
                         output,
                         ReleaseMode::NoMouseButtons,
                     ),
@@ -140,9 +140,10 @@ impl TouchTarget<State> for ResizeForkTarget {
         let location = event.location;
         data.common.event_loop_handle.insert_idle(move |state| {
             let touch = seat.get_touch().unwrap();
-            let (left_node_idx, right_node_idx) = match orientation {
-                Orientation::Horizontal => (Some((node, left_up_idx)), None),
-                Orientation::Vertical => (None, Some((node, left_up_idx))),
+            let request = match orientation {
+                // NOTE: vertical split means we are resizing horizontially
+                Orientation::Horizontal => ResizeTarget::new_vertical(node, left_up_idx),
+                Orientation::Vertical => ResizeTarget::new_horizonital(node, left_up_idx),
             };
             touch.set_grab(
                 state,
@@ -153,8 +154,7 @@ impl TouchTarget<State> for ResizeForkTarget {
                         location,
                     }),
                     location.as_global(),
-                    left_node_idx,
-                    right_node_idx,
+                    request,
                     output,
                     ReleaseMode::NoMouseButtons,
                 ),
@@ -191,8 +191,7 @@ pub struct ResizeForkGrab {
     old_tree: Option<Tree<Data>>,
     accumulated_delta_left: f64,
     accumulated_delta_up: f64,
-    left_node_idx: Option<(NodeId, usize)>,
-    up_node_idx: Option<(NodeId, usize)>,
+    target: ResizeTarget,
     output: WeakOutput,
     release: ReleaseMode,
 }
@@ -201,8 +200,7 @@ impl ResizeForkGrab {
     pub fn new(
         start_data: GrabStartData,
         pointer_loc: Point<f64, Global>,
-        left_node_idx: Option<(NodeId, usize)>,
-        up_node_idx: Option<(NodeId, usize)>,
+        request: ResizeTarget,
         output: WeakOutput,
         release: ReleaseMode,
     ) -> ResizeForkGrab {
@@ -212,8 +210,7 @@ impl ResizeForkGrab {
             old_tree: None,
             accumulated_delta_left: 0.0,
             accumulated_delta_up: 0.0,
-            left_node_idx,
-            up_node_idx,
+            target: request,
             release,
             output,
         }
@@ -272,10 +269,10 @@ impl ResizeForkGrab {
             self.accumulated_delta_left += delta.x.round();
             self.accumulated_delta_up += delta.y.round();
 
-            if let Some((left_node, left_idx)) = &self.left_node_idx {
+            if let Some((left_node, left_idx)) = &self.target.left_node_idx {
                 perform_fork_grab_resize(tree, left_node, *left_idx, self.accumulated_delta_left);
             }
-            if let Some((up_node, up_idx)) = &self.up_node_idx {
+            if let Some((up_node, up_idx)) = &self.target.up_node_idx {
                 perform_fork_grab_resize(tree, up_node, *up_idx, self.accumulated_delta_up);
             }
 
@@ -521,7 +518,7 @@ impl TouchGrab<State> for ResizeForkGrab {
 }
 
 fn perform_fork_grab_resize(
-    tree:  &mut Tree<Data>,
+    tree: &mut Tree<Data>,
     node: &NodeId,
     left_up_idx: usize,
     delta: f64,

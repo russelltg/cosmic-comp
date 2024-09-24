@@ -341,6 +341,30 @@ pub struct MinimizedTilingState {
     pub sizes: Vec<i32>,
 }
 
+#[derive(Default)]
+pub struct ResizeTarget {
+    pub left_node_idx: Option<(NodeId, usize)>, // node ID of group, and the child inside index inside it to resize
+    pub up_node_idx: Option<(NodeId, usize)>,
+}
+
+impl ResizeTarget {
+    pub fn new_horizonital(group: NodeId, child_idx: usize) -> Self {
+        Self {
+            left_node_idx: Some((group, child_idx)),
+            up_node_idx: None,
+        }
+    }
+    pub fn new_vertical(group: NodeId, child_idx: usize) -> Self {
+        Self {
+            left_node_idx: None,
+            up_node_idx: Some((group, child_idx)),
+        }
+    }
+    pub fn is_empty(&self) -> bool {
+        self.left_node_idx.is_none() && self.up_node_idx.is_none()
+    }
+}
+
 impl TilingLayout {
     pub fn new(theme: cosmic::Theme, output: &Output) -> TilingLayout {
         TilingLayout {
@@ -2463,12 +2487,7 @@ impl TilingLayout {
         edges
     }
 
-    // Returns (left_node_idx, up_node_idx)
-    pub fn resize_request(
-        &self,
-        window_node_id: NodeId,
-        edge: ResizeEdge,
-    ) -> (Option<(NodeId, usize)>, Option<(NodeId, usize)>) {
+    pub fn resize_request(&self, window_node_id: NodeId, edge: ResizeEdge) -> ResizeTarget {
         let tree = self.tree();
         // need to find two NodeIds and associated index
         // that indicate the groups and then the index that needs to be resized inside each one
@@ -2522,15 +2541,24 @@ impl TilingLayout {
                 }
 
                 return match orientation {
-                    Orientation::Horizontal => (parent_left_up_node_idx, lower_node_idx),
-                    Orientation::Vertical => (lower_node_idx, parent_left_up_node_idx),
+                    Orientation::Horizontal => ResizeTarget {
+                        left_node_idx: parent_left_up_node_idx,
+                        up_node_idx: lower_node_idx,
+                    },
+                    Orientation::Vertical => ResizeTarget {
+                        left_node_idx: lower_node_idx,
+                        up_node_idx: parent_left_up_node_idx,
+                    },
                 };
             }
 
             try_lower_node_id = try_lower_group_id;
         }
 
-        (None, None)
+        ResizeTarget {
+            left_node_idx: None,
+            up_node_idx: None,
+        }
     }
 
     pub fn resize(

@@ -3262,15 +3262,14 @@ impl Shell {
             grab.into()
         } else if let Some(ws) = self.space_for_mut(&mapped) {
             let node_id = mapped.tiling_node_id.lock().unwrap().clone()?;
-            let (left_node_idx, up_node_idx) = ws.tiling_layer.resize_request(node_id, edge);
-            if left_node_idx.is_none() && up_node_idx.is_none() {
+            let target = ws.tiling_layer.resize_request(node_id, edge);
+            if target.is_empty() {
                 return None;
             }
             ResizeForkGrab::new(
                 start_data,
                 new_loc.to_f64(),
-                left_node_idx,
-                up_node_idx,
+                target,
                 ws.output.downgrade(),
                 ReleaseMode::Click,
             )
@@ -3466,16 +3465,15 @@ impl Shell {
             grab.into()
         } else if let Some(ws) = self.space_for_mut(&mapped) {
             let node_id = mapped.tiling_node_id.lock().unwrap().clone()?;
-            let (left_node_idx, up_node_idx) =
+            let target =
                 ws.tiling_layer.resize_request(node_id, edges);
-            if left_node_idx.is_none() && up_node_idx.is_none() {
+            if target.is_empty() {
                 return None;
             }
             ResizeForkGrab::new(
                 start_data,
                 seat.get_pointer().unwrap().current_location().as_global(),
-                left_node_idx,
-                up_node_idx,
+                target,
                 ws.output.downgrade(),
                 ReleaseMode::NoMouseButtons,
             )
